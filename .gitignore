@@ -9,6 +9,10 @@ venv/
 # SQLite
 *.db
 
+# Generated knowledge base indexes
+.kb/
+**/.kb/
+
 # Editor / OS
 .DS_Store
 .vscode/
