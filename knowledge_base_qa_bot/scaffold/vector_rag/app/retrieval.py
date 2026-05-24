@@ -13,7 +13,8 @@ SYSTEM_PROMPT = """
 #
 # Hints:
 # 1. Only answer using the provided CONTEXT.
-# 2. Cite sources using filename#heading.
+# 2. Cite only exact source IDs shown in [Source: ...].
+#    Each source ID uses filename#heading format.
 # 3. Define fallback behavior when the context lacks the answer.
 # 4. Explicitly prohibit guessing or outside knowledge.
 """
