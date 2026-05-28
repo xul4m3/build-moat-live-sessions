@@ -28,12 +28,21 @@ def search(
     """
     ranked = index.top_k(query, k)
 
-    # 沒有任何 section（空 index）或 top-1 分數太低 -> fallback
-    if not ranked or ranked[0][1] < threshold:
-        return RetrievalResult(sections=[], scores=[], fallback=True)
+    # 空 index → fallback
+    if not ranked:
+        return RetrievalResult(fallback=True)
 
-    # 拆 tuple list 成兩個平行 list；list comprehension 是 Python 慣用寫法
-    # pair[0] 是 Section 物件、pair[1] 是 BM25 score（float）
-    sections = [pair[0] for pair in ranked]
-    scores = [pair[1] for pair in ranked]
-    return RetrievalResult(sections=sections, scores=scores, fallback=False)
+    # 解構 top-1 看分數；用具名變數比 ranked[0][1] 直白
+    _, top_score = ranked[0]
+    if top_score < threshold:
+        return RetrievalResult(fallback=True)
+
+    # zip(*iterable) 是 unzip 慣用法：把 [(s1, sc1), (s2, sc2), ...] 轉成
+    # ([s1, s2, ...], [sc1, sc2, ...])。比兩次 list comprehension 更慣用、只走訪一次。
+    # 注意：zip 回 tuple，所以下面要 list(...) 把它轉成 list。
+    sections_tuple, scores_tuple = zip(*ranked)
+    return RetrievalResult(
+        sections=list(sections_tuple),
+        scores=list(scores_tuple),
+        fallback=False,
+    )
