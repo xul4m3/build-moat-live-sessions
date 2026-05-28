@@ -73,6 +73,36 @@ def test_parse_markdown_empty_content_returns_one_section_with_empty_body():
     assert sections[0].body == ""
 
 
+def test_parse_markdown_h3_treated_as_body_not_section_boundary():
+    """### H3 不應該被當成 section 邊界 -> 整段含 ### 都會進 H2 section 的 body。"""
+    content = (
+        "## Section\n"
+        "### Sub\n"
+        "some text\n"
+    )
+    sections = parse_markdown(content, "x.md")
+    assert len(sections) == 1
+    assert sections[0].heading == "Section"
+    # ### Sub 那一行應該保留在 body 裡（不被當 heading）
+    assert "### Sub" in sections[0].body
+    assert "some text" in sections[0].body
+
+
+def test_parse_markdown_heading_with_no_body_produces_empty_body():
+    """連續 ## 中間沒文字 -> 前一個 section body 是空字串。"""
+    content = (
+        "## First\n"
+        "## Second\n"
+        "some text\n"
+    )
+    sections = parse_markdown(content, "x.md")
+    assert len(sections) == 2
+    assert sections[0].heading == "First"
+    assert sections[0].body == ""
+    assert sections[1].heading == "Second"
+    assert sections[1].body == "some text"
+
+
 def test_load_docs_reads_all_md_files(sample_docs_dir: Path):
     """conftest.py 的 sample_docs_dir 寫了兩個檔；load_docs 應該把全部 section 攤平。"""
     sections = load_docs(sample_docs_dir)

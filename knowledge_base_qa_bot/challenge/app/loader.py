@@ -2,9 +2,13 @@
 Markdown loader：把 docs/*.md 切成 list[Section]。
 
 Heading 規則（per DESIGN.md §6.2）：
-- "## " 開頭那一行為 section 分界
+- "## " 開頭那一行為 section 分界（注意：開頭必須是「井號井號空白」）
+- "### " H3、"# " H1、"##nospace" 等不算 section 分界，會被當成 body 文字
 - 如果整檔沒有任何 "## "，整檔當一個 section，heading 用檔名（去 .md）
 - heading 文字過 slugify() 後變成 URL 友善的 slug、用於 citation
+
+⚠️ Slug 限制：slugify 只支援 ASCII 英數字元。中文等非英文 heading 會產生空字串
+   slug，會把 citation 弄成 "filename#"。目前 KB 只有英文 docs、可接受。
 """
 import re
 from pathlib import Path
@@ -22,12 +26,12 @@ def slugify(text: str) -> str:
     2. 非英數字元（含標點、空白）一律換成 "-"：
        re.sub(pattern, replacement, string) 把符合 pattern 的地方換成 replacement。
        r"[^a-z0-9]+" 是 regex：[^...] 表示「不在這個集合裡的字元」，+ 表示「一個以上」
-    3. 連續 "-" 合併（其實步驟 2 的 + 已經合併了，這行是保險）
+    3. 連續 "-" 合併（處理原文裡夾雜的真實 dash 加上標點的邊緣狀況）
     4. str.strip("-") 去掉開頭結尾多餘的 "-"
     """
     s = text.lower()
-    s = re.sub(r"[^a-z0-9]+", "-", s)   # 非英數換成 "-"（+ 讓連續標點一次換掉）
-    s = re.sub(r"-+", "-", s)            # 多個 "-" 合一（防禦性保險）
+    s = re.sub(r"[^a-z0-9]+", "-", s)   # 非英數換成 "-"
+    s = re.sub(r"-+", "-", s)            # 合併連續 "-"
     return s.strip("-")                  # 去掉首尾 "-"
 
 
@@ -75,7 +79,7 @@ def parse_markdown(content: str, filename: str) -> list[Section]:
 
     # content.splitlines() 把多行字串切成逐行 list，不帶換行符
     for line in content.splitlines():
-        if line.startswith("## "):
+        if line.startswith("## "):   # 只認 H2；"### "、"# "、"##nospace" 都會走到 elif 變 body
             # 遇到新 section -> 先把上一個 flush 掉，再重設 heading + body
             flush()
             current_heading = line[3:].strip()   # line[3:] 去掉 "## " 前綴（3 個字元）
