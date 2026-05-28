@@ -125,3 +125,77 @@ def build_index() -> IndexResponse:
         files_indexed=files_indexed,
         sections_indexed=len(sections),
     )
+
+
+# ============ /chat ============
+
+class ChatRequest(BaseModel):
+    """POST /chat 的 request body。
+
+    FastAPI 看到函式參數型別是 BaseModel 子類，會自動從 HTTP body 反序列化 JSON。
+    這比手動 `request.json()` 乾淨，也自動驗證格式（缺 query 就回 422）。
+    """
+    query: str
+
+
+class ChatResponse(BaseModel):
+    """POST /chat 的回應。"""
+    answer: str
+    sources: list[str]
+
+
+# 把常數抽到 module level，方便 test assert、也不需要 hardcode 字串在 handler 裡
+_NOT_INDEXED_MSG = (
+    "The knowledge base has not been indexed yet. "
+    "Please POST /index before asking questions."
+)
+_CANNOT_CONFIRM_MSG = (
+    "I cannot confirm this from the knowledge base."
+)
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(req: ChatRequest) -> ChatResponse:
+    """以 grounded 方式回答問題。三種路徑：
+
+    1. 還沒 /index → 友善訊息、不呼 LLM
+    2. 命中 retrieval（top-1 score >= threshold）→ 呼 LLM、回 answer + sources
+    3. 沒命中 → cannot-confirm、不呼 LLM
+
+    設計原則：只有在有可靠 context 的情況下才呼 LLM，
+    避免「沒有根據的幻覺」且省下不必要的 API 費用。
+    """
+    cfg = state["config"]
+    index = state["index"]
+
+    # Path 1: 未建索引
+    if index is None:
+        logger.info(f"/chat called before /index: query={req.query!r}")
+        return ChatResponse(answer=_NOT_INDEXED_MSG, sources=[])
+
+    # 跑 retrieval：BM25 排名 + threshold 判斷
+    result = search(
+        query=req.query,
+        index=index,
+        k=3,
+        threshold=cfg.bm25_score_threshold,
+    )
+
+    # Path 3: 弱檢索 → fallback、不呼 LLM
+    if result.fallback:
+        logger.info(f"/chat fallback (no section above threshold): query={req.query!r}")
+        return ChatResponse(answer=_CANNOT_CONFIRM_MSG, sources=[])
+
+    # Path 2: 命中 → 呼 LLM
+    # build_messages 把 sections + query 組成 OpenAI messages list
+    messages = build_messages(req.query, result.sections)
+    llm_response = state["llm"].ask(messages)
+    logger.info(
+        f"/chat answered: query={req.query!r} "
+        f"top_score={result.scores[0]:.3f} "
+        f"sources={llm_response.sources}"
+    )
+    return ChatResponse(
+        answer=llm_response.answer,
+        sources=llm_response.sources,
+    )
