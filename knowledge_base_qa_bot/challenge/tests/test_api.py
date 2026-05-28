@@ -28,7 +28,12 @@ def app_factory(monkeypatch, sample_docs_dir, tmp_path):
     - 有的 test 需要 initial_index=True（先建好 index 再測 /chat）
     - 有的 test 需要在 fixture 外再設 env var（例如 threshold 999）
     - 工廠讓每個 test 按需組態，彈性更高
+
+    Teardown：fixture 結尾 yield 之後會把每個被建立的 client 顯式 __exit__()，
+    確保 lifespan 的 shutdown hook 被呼到、anyio portal 不會 leak。
     """
+    created_clients: list[TestClient] = []
+
     def _build(initial_index: bool = False):
         # 1. 設好 env var，讓 load_config() 拿到測試用的值
         # BM25_SCORE_THRESHOLD 刻意不在這裡設，讓 test 在呼 _build() 前自己設定：
@@ -66,14 +71,20 @@ def app_factory(monkeypatch, sample_docs_dir, tmp_path):
         # FastAPI 的 TestClient 只有在 context manager 模式下（with TestClient(app)）
         # 才會觸發 lifespan。這裡手動呼 __enter__() 讓 startup hook 執行，
         # 這樣 lifespan 裡的「載入既有 index」邏輯才會生效。
-        # test 結束後 pytest 的 GC 會清掉 client，__exit__ 自然呼到。
+        # 對應的 __exit__() 由 fixture teardown 段（yield 之後）負責呼，
+        # 不能依賴 GC —— ExitStack 沒有 __del__、靠 GC 不會關掉 lifespan。
         client = TestClient(main.app)
         client.__enter__()
+        created_clients.append(client)
         if initial_index:
             client.post("/index")
         return client, mock_ask
 
-    return _build
+    yield _build
+
+    # Teardown：每個被建出的 client 都顯式關掉，跑 lifespan shutdown 段。
+    for c in created_clients:
+        c.__exit__(None, None, None)
 
 
 def test_health_returns_ok(app_factory):
@@ -205,3 +216,24 @@ def test_startup_loads_existing_index(app_factory, sample_docs_dir, tmp_path, mo
     assert r.status_code == 200
     # 重點：沒呼 /index 還是能正常回應 -> 證明 startup 載入成功
     assert "not been indexed" not in r.json()["answer"].lower()
+
+
+def test_chat_llm_failure_returns_503(app_factory, monkeypatch):
+    """LLM 呼叫拋例外（網路 / 認證 / rate limit）-> 503，不要漏 traceback。
+
+    對應 DESIGN.md §6.2「OpenAI API 失敗（網路、429、500）→ 503 + 簡短錯誤訊息」。
+    我們模擬 openai.APIConnectionError；caller 應該拿到 503 而非 500 或 trace。
+    """
+    import openai
+
+    monkeypatch.setenv("BM25_SCORE_THRESHOLD", "-1.0")
+    client, mock_ask = app_factory(initial_index=True)
+
+    # APIConnectionError 需要 request 物件；在 mock 場景傳 None 即可（不會被使用）
+    mock_ask.side_effect = openai.APIConnectionError(request=None)  # type: ignore[arg-type]
+
+    r = client.post("/chat", json={"query": "How long do refunds take?"})
+    assert r.status_code == 503
+    body = r.json()
+    # FastAPI HTTPException 的 detail 會出現在 response body
+    assert "unavailable" in body["detail"].lower()

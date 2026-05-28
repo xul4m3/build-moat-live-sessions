@@ -11,12 +11,13 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+import openai
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.config import load_config
 from app.bm25 import BM25Index
-from app.llm import LLMClient
+from app.llm import LLMClient, LLMRefusalError
 from app.loader import load_docs
 from app.prompt import build_messages
 from app.retrieval import search
@@ -189,7 +190,16 @@ def chat(req: ChatRequest) -> ChatResponse:
     # Path 2: 命中 → 呼 LLM
     # build_messages 把 sections + query 組成 OpenAI messages list
     messages = build_messages(req.query, result.sections)
-    llm_response = state["llm"].ask(messages)
+    try:
+        llm_response = state["llm"].ask(messages)
+    except (openai.OpenAIError, LLMRefusalError) as exc:
+        # DESIGN.md §6.2：LLM 失敗回 503，不要漏 traceback 給 client。
+        # openai.OpenAIError 涵蓋 SDK 自家所有例外（網路、認證、rate limit、5xx）。
+        logger.error(f"/chat LLM error: {type(exc).__name__}: {exc}")
+        raise HTTPException(
+            status_code=503,
+            detail="LLM service unavailable. Please try again later.",
+        )
     logger.info(
         f"/chat answered: query={req.query!r} "
         f"top_score={result.scores[0]:.3f} "
