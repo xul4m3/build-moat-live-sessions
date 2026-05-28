@@ -70,3 +70,23 @@ def test_health_returns_ok(app_factory):
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+def test_index_endpoint_builds_and_persists(app_factory, tmp_path):
+    """/index 應該讀 KB_DOCS_DIR 下的 .md、建 BM25 index、把 index.json 寫到磁碟。
+
+    conftest.py 的 sample_docs_dir 寫了兩個 .md（refunds.md + account.md），
+    各有一個 ## section，所以 files_indexed=2、sections_indexed=2。
+    """
+    client, _ = app_factory()
+
+    r = client.post("/index")
+    assert r.status_code == 200
+
+    body = r.json()
+    assert body["files_indexed"] == 2          # conftest 寫 2 個檔
+    assert body["sections_indexed"] == 2       # 各 1 個 ## section
+
+    # index 檔被寫出來（用 tmp_path 確認路徑跟 app_factory 設的 KB_INDEX_PATH 一致）
+    index_path = tmp_path / ".kb" / "index.json"
+    assert index_path.exists()

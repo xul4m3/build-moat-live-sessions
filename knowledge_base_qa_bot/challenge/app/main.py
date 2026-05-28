@@ -86,3 +86,42 @@ def health() -> dict[str, str]:
     不做任何 DB 或外部服務的健康檢查 —— 那是 readiness probe 的事。
     """
     return {"status": "ok"}
+
+
+class IndexResponse(BaseModel):
+    """POST /index 的回應格式。
+
+    pydantic BaseModel 用於 FastAPI response_model：
+    - FastAPI 自動產 OpenAPI schema（可在 /docs 看到）
+    - 驗證輸出格式（如果 handler 不小心回錯型別，FastAPI 會 raise 而不是靜默傳錯）
+    - 序列化成 JSON 回應
+    """
+    files_indexed: int
+    sections_indexed: int
+
+
+@app.post("/index", response_model=IndexResponse)
+def build_index() -> IndexResponse:
+    """讀 KB_DOCS_DIR 下所有 .md、建 BM25 index、寫到 KB_INDEX_PATH。
+
+    這個 endpoint 冪等：重複呼叫會覆蓋舊 index，不會累積。
+    Docker build 階段會呼一次此 endpoint（或直接呼 build_index.py），
+    讓 image 內就有 .kb/index.json，container 起來不需要重跑。
+    """
+    cfg = state["config"]
+    sections = load_docs(cfg.kb_docs_dir)
+    index = BM25Index.build(sections)
+    save(index, cfg.kb_index_path)
+    state["index"] = index
+
+    # set comprehension：{表達式 for 變數 in 集合} 自動去重
+    # {s.filename for s in sections} 收集所有不同的 filename
+    files_indexed = len({s.filename for s in sections})
+    logger.info(
+        f"indexed {files_indexed} files, {len(sections)} sections "
+        f"→ {cfg.kb_index_path}"
+    )
+    return IndexResponse(
+        files_indexed=files_indexed,
+        sections_indexed=len(sections),
+    )
