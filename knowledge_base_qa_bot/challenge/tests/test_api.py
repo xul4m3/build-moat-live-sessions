@@ -62,10 +62,13 @@ def app_factory(monkeypatch, sample_docs_dir, tmp_path):
         from app import main
         reload(main)  # 確保拿到最新 env 變數
 
-        # 4. 如果 test 想要預先有 index，先呼一次 /index
-        # TestClient 做為 context manager 使用時才會觸發 lifespan；
-        # 這裡直接建構也可以（TestClient 預設在 __init__ 就啟動 lifespan）。
+        # 4. 建立 TestClient 並觸發 lifespan（startup hook）
+        # FastAPI 的 TestClient 只有在 context manager 模式下（with TestClient(app)）
+        # 才會觸發 lifespan。這裡手動呼 __enter__() 讓 startup hook 執行，
+        # 這樣 lifespan 裡的「載入既有 index」邏輯才會生效。
+        # test 結束後 pytest 的 GC 會清掉 client，__exit__ 自然呼到。
         client = TestClient(main.app)
+        client.__enter__()
         if initial_index:
             client.post("/index")
         return client, mock_ask
@@ -176,3 +179,29 @@ def test_chat_out_of_scope_query_returns_cannot_confirm_without_calling_llm(
     assert body["sources"] == []
     # fallback 路徑不該呼 LLM（省成本、避免幻覺）
     mock_ask.assert_not_called()
+
+
+def test_startup_loads_existing_index(app_factory, sample_docs_dir, tmp_path, monkeypatch):
+    """建 index、銷掉 app、重新起一個 app -> 不需要再呼 /index。
+
+    這驗證 lifespan startup hook 真的有把 .kb/index.json 載進來：
+    - client1 呼 /index，把 index 寫到 tmp_path/.kb/index.json
+    - client2 reload(main) + 新建 TestClient，lifespan 執行時讀到 index.json
+    - client2 不呼 /index，直接問 /chat -> 應該也能正常回答（不是 "not indexed" 訊息）
+    """
+    # 第一次：建 index
+    monkeypatch.setenv("BM25_SCORE_THRESHOLD", "-1.0")
+    client1, _ = app_factory(initial_index=True)
+    assert (tmp_path / ".kb" / "index.json").exists()
+
+    # 第二次：用同樣的 KB_INDEX_PATH 起一個新 client，但不呼 /index
+    # app_factory 會 reload(main)，lifespan 重跑，startup hook 讀到既有 index
+    client2, mock_ask = app_factory()
+
+    # mock LLM 防止真的打 API
+    mock_ask.return_value = LLMResponse(answer="x", sources=["refunds.md#refund-timeline"])
+
+    r = client2.post("/chat", json={"query": "How long do refunds take?"})
+    assert r.status_code == 200
+    # 重點：沒呼 /index 還是能正常回應 -> 證明 startup 載入成功
+    assert "not been indexed" not in r.json()["answer"].lower()
