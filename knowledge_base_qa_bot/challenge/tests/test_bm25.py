@@ -87,3 +87,15 @@ def test_bm25index_top_k_larger_than_corpus_returns_all():
     idx = BM25Index.build(_make_sections())
     ranked = idx.top_k("shipping", k=10)
     assert len(ranked) == 3
+
+
+def test_bm25index_top_k_stopword_only_query_returns_zero_scores():
+    """整個 query 都是 stopword -> tokenize 回 []、所有 score 應為 0。
+
+    這個 case 在 retrieval 層會被 threshold 過濾掉，但 BM25Index 本身
+    要不報錯地回 k 個 zero-score 結果。
+    """
+    idx = BM25Index.build(_make_sections())
+    ranked = idx.top_k("the is a", k=3)
+    assert len(ranked) == 3
+    assert all(score == 0 for _, score in ranked)

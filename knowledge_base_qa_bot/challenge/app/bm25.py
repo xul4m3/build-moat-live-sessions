@@ -54,6 +54,8 @@ class BM25Index:
     # - init=False：不放進 __init__ 參數（由 __post_init__ 自行建立）
     # - repr=False：不放進 __repr__ 輸出（避免印出整個 BM25 內部物件）
     # - compare=False：不放進 __eq__ 比較（兩個 index 相等看 sections + tokens 就夠）
+    # 為什麼用單底線 _bm25 而不是雙底線 __bm25：雙底線會觸發 Python name mangling，
+    # 把欄位名改成 _BM25Index__bm25，dataclass field() 對不上會 silently 出錯。
     _bm25: BM25Okapi = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -65,6 +67,10 @@ class BM25Index:
         空 corpus 處理：rank_bm25.BM25Okapi 對空 list 會 raise（divide by zero）；
         給它一個 dummy doc [""] 讓初始化成功。top_k 已有 `if not self.sections` 短路，
         所以 dummy doc 不會影響查詢結果。
+
+        不變量：build() 跟 store.load() 都會把 sections 跟 tokens 維持平行
+        （len 相等、index 對應）。因此 `not self.tokens` 在實務上等同 `not self.sections`，
+        dummy doc 路徑只會在「真的空索引」時觸發。
         """
         # self.tokens or [[""]]：若 tokens 是空 list（falsy），改用含一個空 doc 的 list
         self._bm25 = BM25Okapi(self.tokens if self.tokens else [[""]])
