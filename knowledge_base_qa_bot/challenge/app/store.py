@@ -68,9 +68,17 @@ def load(path: Path) -> BM25Index | None:
         # 這樣可以直接把 JSON dict 餵給 dataclass，不用逐欄位手寫
         sections = [Section(**raw) for raw in data["sections"]]
         tokens = data["tokens"]
-    except (json.JSONDecodeError, KeyError, TypeError):
+    except (json.JSONDecodeError, KeyError, TypeError, OSError):
         # json.JSONDecodeError：字串不是合法 JSON（例如 "{ this is not json"）
         # KeyError：dict 裡找不到 "sections" 或 "tokens" 這個 key
         # TypeError：Section(**raw) 時欄位名不符（多欄位或少欄位都會 raise）
+        # OSError：path 是目錄、檔案被 lock、權限不足等 I/O 問題（Windows 常見）
         return None
+
+    # tokens 結構驗證：必須是 list[list[str]]。
+    # 若被人手改 JSON 改成扁平 list[str]，BM25Okapi 會把每個字串當 iterable
+    # 拆成單字元 token，導致所有查詢 score=0、silent failure。
+    if not isinstance(tokens, list) or (tokens and not isinstance(tokens[0], list)):
+        return None
+
     return BM25Index(sections=sections, tokens=tokens)
