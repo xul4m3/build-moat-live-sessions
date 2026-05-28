@@ -12,6 +12,10 @@ def sample_docs_dir(tmp_path: Path) -> Path:
 
     tmp_path 是 pytest 內建 fixture：每個 test 拿到一個獨立的暫存資料夾，
     test 結束自動清掉，不會污染 working tree。
+
+    fixture 函式不會被 test 直接呼叫 —— pytest 看 test 的參數名（必須跟
+    fixture 名一致），自動注入回傳值。例：
+        def test_xxx(sample_docs_dir): ...   # pytest 自己幫你帶 docs path 進來
     """
     docs = tmp_path / "docs"
     docs.mkdir()
