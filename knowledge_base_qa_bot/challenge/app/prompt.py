@@ -15,7 +15,7 @@ _SYSTEM_PROMPT = (
     "knowledge base sections below. Rules:\n"
     "1. Only use facts that appear in the context. Do not invent details.\n"
     "2. Cite every source you used in the 'sources' field using the exact "
-    "[filename#heading] tag shown next to each section.\n"
+    "[filename#heading] tag shown on the line above each section's body.\n"
     "3. If the context does not contain the answer, reply that you cannot "
     "confirm this from the knowledge base, and leave 'sources' empty.\n"
 )
@@ -26,10 +26,14 @@ def build_messages(query: str, sections: list[Section]) -> list[dict]:
 
     參數:
         query: 使用者原問題
-        sections: retrieval.search 拿到的 top-K sections
+        sections: retrieval.search 拿到的 top-K sections。**呼叫端要負責確認非空**
+                  —— retrieval 在 fallback=True 時應直接回 cannot-confirm、不呼此函式。
+                  若傳空 list 進來，回出去的 user content 會是 "Context:\\n\\nQuestion: ..."
+                  （Context 段空白），行為未定義。
 
     回傳:
         2 個 dict 的 list：system instruction + user content。
+        Section 的順序原樣保留 —— 排序是 retrieval 的責任、本函式不重排。
     """
     # 把每個 section 排成 "[citation]\nbody" 的 block、用空行分隔
     # f-string 是 Python 3.6+ 內建的字串格式化工具，可以在字串裡嵌入變數：

@@ -50,3 +50,16 @@ def test_user_message_includes_section_bodies():
     user_content = msgs[1]["content"]
     assert "5-7 business days" in user_content
     assert "3-5 business days" in user_content
+
+
+def test_context_section_order_matches_input():
+    """sections 的順序原樣保留 -> refund 在 shipping 之前。
+
+    contract test：未來若有人在 build_messages 加排序邏輯，test 會擋下。
+    排序是 retrieval 的職責，prompt 層不該動。
+    """
+    msgs = build_messages("any", _sections())
+    user_content = msgs[1]["content"]
+    refund_pos = user_content.index("refund.md#refund-timeline")
+    shipping_pos = user_content.index("shipping.md#standard-shipping")
+    assert refund_pos < shipping_pos
