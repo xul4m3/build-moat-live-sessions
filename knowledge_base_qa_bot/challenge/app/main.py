@@ -1,0 +1,88 @@
+"""
+FastAPI app entry point。組裝所有模組、暴露 3 個 endpoint：
+
+- GET  /health  → 健康檢查
+- POST /index   → 讀 docs/、建 BM25 index、寫 .kb/index.json
+- POST /chat    → query → retrieval → LLM（或 cannot-confirm）
+
+startup hook 會嘗試自動載入既有的 .kb/index.json（若存在）；不存在就讓 /chat 友善回應。
+"""
+import logging
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+from app.config import load_config
+from app.bm25 import BM25Index
+from app.llm import LLMClient
+from app.loader import load_docs
+from app.prompt import build_messages
+from app.retrieval import search
+from app.store import save, load
+
+
+# ============ 啟動初始化 ============
+
+logger = logging.getLogger(__name__)
+
+_config = load_config()
+logging.basicConfig(level=_config.log_level)
+
+# state：用 dict 而不是 module-level variable，方便 test reload。
+# reload(main) 會重建這個 dict，每個 test 拿到的都是全新的乾淨狀態，
+# 避免 test 之間互相汙染（例如上一個 test 留下的 index 被下一個 test 用到）。
+state: dict[str, Any] = {
+    "config": _config,
+    "index": None,           # BM25Index | None
+    "llm": LLMClient(api_key=_config.openai_api_key, model=_config.openai_model),
+}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI 啟動 / 關閉 hook。Startup: 嘗試載入既有 index。
+
+    asynccontextmanager 把一個 async generator function 包成
+    「進入 (yield 之前) -> yield -> 離開 (yield 之後)」三段式 context manager：
+
+        startup code    ← yield 之前這段，server 起來時跑
+        yield           ← 這裡 FastAPI 開始接受請求
+        shutdown code   ← yield 之後這段，server 關閉時跑
+
+    FastAPI 在 app start 時跑 yield 前面那段、shutdown 時跑 yield 後面那段。
+    沒有 yield 就會直接 raise，所以一定要有。
+    """
+    existing = load(state["config"].kb_index_path)
+    if existing is not None:
+        state["index"] = existing
+        logger.info(
+            f"loaded index from {state['config'].kb_index_path}: "
+            f"{len(existing.sections)} sections"
+        )
+    else:
+        logger.info(
+            "no existing index; /chat will return 'not indexed' "
+            "until /index is called"
+        )
+    yield
+    # 沒有特別的 shutdown 工作
+
+
+# @app.get 是 FastAPI 的「路由裝飾器」：
+# 它告訴 FastAPI「當收到 GET /health 請求時，呼叫底下這個函式處理」。
+# FastAPI 會自動把函式回傳值序列化成 JSON 回應。
+app = FastAPI(lifespan=lifespan)
+
+
+# ============ Endpoints ============
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """簡單 liveness 檢查。
+
+    這個 endpoint 讓 K8s liveness probe / load balancer 確認 server 還活著。
+    不做任何 DB 或外部服務的健康檢查 —— 那是 readiness probe 的事。
+    """
+    return {"status": "ok"}
