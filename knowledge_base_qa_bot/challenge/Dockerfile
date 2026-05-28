@@ -6,6 +6,7 @@ WORKDIR /build
 
 # 先裝依賴。先 copy requirements.txt 才 copy code 是 Docker layer cache 慣例：
 # 改 code 不會讓 pip install 整個 layer 重跑、build 加速
+# Builder 階段不需要 dev deps（pytest/httpx）—— 只跑 build_index 這支 CLI
 COPY challenge/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -23,7 +24,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 跟 builder 一樣裝依賴（但不帶 build 工具，image 比較精簡）
+# 只裝 runtime 依賴（pytest/httpx 放在 requirements-dev.txt、不進 image）
 COPY challenge/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -31,6 +32,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY --from=builder /build/app/  ./app/
 COPY --from=builder /build/docs/ ./docs/
 COPY --from=builder /build/.kb/  ./.kb/
+
+# 切到非 root user。container 對外提供 HTTP，最小化 attack surface 是基本實務。
+# --system 建系統帳號（無密碼、不能 login）；--no-create-home 不需要 home dir
+RUN adduser --system --no-create-home --group appuser
+USER appuser
 
 # Runtime 預設參數；K8s manifest 可覆寫
 ENV KB_DOCS_DIR=/app/docs \

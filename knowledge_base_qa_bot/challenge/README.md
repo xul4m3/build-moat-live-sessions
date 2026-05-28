@@ -8,7 +8,7 @@
 cd challenge
 python -m venv .venv
 source .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # 含 runtime + 測試依賴；production image 只裝 requirements.txt
 cp .env.example .env         # 然後把 OPENAI_API_KEY 填進去
 ```
 
