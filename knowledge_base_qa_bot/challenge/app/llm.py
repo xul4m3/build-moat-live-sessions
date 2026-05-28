@@ -66,6 +66,9 @@ class LLMClient:
             messages=messages,
             response_format=LLMResponse,
         )
+        # 防禦：少數錯誤情況下 OpenAI 可能回空 choices；不擋下會 IndexError
+        if not completion.choices:
+            raise LLMRefusalError("OpenAI returned no choices")
         message = completion.choices[0].message
         # 如果 LLM refused，message.parsed 為 None、message.refusal 有原因
         if message.parsed is None:

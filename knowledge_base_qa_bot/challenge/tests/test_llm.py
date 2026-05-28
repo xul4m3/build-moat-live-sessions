@@ -60,3 +60,14 @@ def test_ask_raises_on_refusal(mock_openai):
     client = LLMClient(api_key="sk-test", model="gpt-4o-mini")
     with pytest.raises(LLMRefusalError, match="cannot help"):
         client.ask([{"role": "user", "content": "anything"}])
+
+
+def test_ask_raises_on_empty_choices(mock_openai):
+    """OpenAI 回空 choices list -> 拋 LLMRefusalError、避免 IndexError。"""
+    from app.llm import LLMRefusalError
+
+    mock_openai.chat.completions.parse.return_value = MagicMock(choices=[])
+
+    client = LLMClient(api_key="sk-test", model="gpt-4o-mini")
+    with pytest.raises(LLMRefusalError, match="no choices"):
+        client.ask([{"role": "user", "content": "anything"}])
