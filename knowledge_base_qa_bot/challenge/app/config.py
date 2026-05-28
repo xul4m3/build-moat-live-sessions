@@ -49,11 +49,26 @@ def load_config() -> Config:
     return Config(
         openai_api_key=api_key,
         openai_model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-        # float() 把字串轉浮點數；env var 永遠是字串，要自己轉
-        bm25_score_threshold=float(os.environ.get("BM25_SCORE_THRESHOLD", "0.5")),
+        # env var 永遠是字串、要自己 coerce；包一層 helper 讓錯誤訊息指明是哪個 var
+        bm25_score_threshold=_parse_float_env("BM25_SCORE_THRESHOLD", "0.5"),
         # Path(...) 把字串轉成 pathlib.Path 物件，方便後續做 .exists()、.read_text() 等操作
         kb_docs_dir=Path(os.environ.get("KB_DOCS_DIR", "../docs")),
         kb_index_path=Path(os.environ.get("KB_INDEX_PATH", ".kb/index.json")),
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
         env_name=os.environ.get("ENV_NAME", "local"),
     )
+
+
+def _parse_float_env(name: str, default: str) -> float:
+    """讀 env var、轉 float；轉不成功時的錯誤訊息直接點名是哪個 var。
+
+    不把這個 helper 寫進 load_config inline 是為了讓 stack trace 乾淨 ——
+    raise 時呼叫者一眼就能看到「BM25_SCORE_THRESHOLD」這個 key 名。
+    """
+    raw = os.environ.get(name, default)
+    try:
+        return float(raw)
+    except ValueError as e:
+        raise ValueError(
+            f"{name} must be a float; got: {raw!r}"
+        ) from e
