@@ -123,3 +123,34 @@ def test_load_docs_missing_dir_returns_empty_list(tmp_path: Path):
     missing = tmp_path / "does-not-exist"
     sections = load_docs(missing)
     assert sections == []
+
+
+def test_load_docs_handles_utf8_bom(tmp_path: Path):
+    """UTF-8 BOM 開頭的檔（Windows 編輯器常見）-> ## heading 仍要被辨識。
+
+    若用 encoding="utf-8" 讀，BOM (\\ufeff) 會留在第一行開頭、害 "## " 比對失敗，
+    整個檔退化成 filename fallback section。utf-8-sig 會自動吃掉 BOM。
+    """
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    # write_text encoding="utf-8-sig" 會在檔案開頭寫入 BOM
+    (docs / "bom.md").write_text(
+        "## Refund Timeline\nRefunds in 5-7 days.\n", encoding="utf-8-sig"
+    )
+    sections = load_docs(docs)
+    assert len(sections) == 1
+    # 重點：heading 是 "Refund Timeline"，不是退化成 filename "bom"
+    assert sections[0].heading == "Refund Timeline"
+
+
+def test_load_docs_skips_non_utf8_file(tmp_path: Path):
+    """非 UTF-8 的 .md 檔 -> 跳過它、不要讓整個 load_docs 崩，其他檔照讀。"""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "good.md").write_text("## Good\nbody\n", encoding="utf-8")
+    # 0xe9 是 latin-1 的 é，不是合法 UTF-8 起始 byte
+    (docs / "bad.md").write_bytes(b"## Caf\xe9\nbody\n")
+
+    sections = load_docs(docs)  # 不該 raise
+    headings = {s.heading for s in sections}
+    assert "Good" in headings  # good.md 仍被讀到

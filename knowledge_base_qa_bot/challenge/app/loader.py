@@ -10,9 +10,12 @@ Heading 規則（per DESIGN.md §6.2）：
 ⚠️ Slug 限制：slugify 只支援 ASCII 英數字元。中文等非英文 heading 會產生空字串
    slug，會把 citation 弄成 "filename#"。目前 KB 只有英文 docs、可接受。
 """
+import logging
 import re
 from pathlib import Path
 from app.types import Section
+
+logger = logging.getLogger(__name__)
 
 
 def slugify(text: str) -> str:
@@ -113,6 +116,7 @@ def load_docs(directory: Path) -> list[Section]:
 
     回傳:
         list[Section]，目錄不存在或沒有 .md 時回空 list（不 raise）。
+        個別 .md 檔讀取失敗（非 UTF-8、I/O 錯誤）會被跳過 + warn log，不影響其他檔。
 
     Path API 說明：
         directory.exists()       → 路徑存在嗎（可以是檔案或目錄）
@@ -128,7 +132,15 @@ def load_docs(directory: Path) -> list[Section]:
     sections: list[Section] = []
     # sorted() 確保跨 OS 的檔案讀取順序一致（glob 不保證回傳順序）
     for md_path in sorted(directory.glob("*.md")):
-        content = md_path.read_text(encoding="utf-8")
+        try:
+            # utf-8-sig：自動吃掉檔案開頭的 BOM（Windows 編輯器常加）。
+            # 沒 BOM 的檔也能正常讀，所以一律用 -sig 比較保險。
+            content = md_path.read_text(encoding="utf-8-sig")
+        except (UnicodeDecodeError, OSError) as e:
+            # 單一壞檔（非 UTF-8 編碼、讀取錯誤）不該讓整個 index build 崩。
+            # 跳過它、記 warning，讓其他檔照樣 index。
+            logger.warning(f"skipping unreadable doc {md_path.name}: {e}")
+            continue
         # list.extend() 把 parse_markdown 回傳的 list 展開加進 sections
         # （跟 append 差別：append 加一個元素，extend 加多個）
         sections.extend(parse_markdown(content, md_path.name))
