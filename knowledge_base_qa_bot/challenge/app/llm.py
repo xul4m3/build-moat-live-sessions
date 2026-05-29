@@ -70,7 +70,11 @@ class LLMClient:
         if not completion.choices:
             raise LLMRefusalError("OpenAI returned no choices")
         message = completion.choices[0].message
-        # 如果 LLM refused，message.parsed 為 None、message.refusal 有原因
+        # 防禦：message 本身可能是 None（罕見錯誤回應）；直接存取 .parsed 會 AttributeError
+        if message is None:
+            raise LLMRefusalError("OpenAI returned an empty message")
+        # 如果 LLM refused，message.parsed 為 None、message.refusal 有原因。
+        # parsed 跟 refusal 若同時有值，以 parsed 為準（先檢查 parsed is None）。
         if message.parsed is None:
             raise LLMRefusalError(message.refusal or "LLM returned no parsed content")
         return message.parsed

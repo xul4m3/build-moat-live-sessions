@@ -71,3 +71,28 @@ def test_ask_raises_on_empty_choices(mock_openai):
     client = LLMClient(api_key="sk-test", model="gpt-4o-mini")
     with pytest.raises(LLMRefusalError, match="no choices"):
         client.ask([{"role": "user", "content": "anything"}])
+
+
+def test_ask_raises_on_none_message(mock_openai):
+    """choices 非空但 choices[0].message 為 None -> 拋 LLMRefusalError 而非 AttributeError。"""
+    from app.llm import LLMRefusalError
+
+    fake_choice = MagicMock(message=None)
+    mock_openai.chat.completions.parse.return_value = MagicMock(choices=[fake_choice])
+
+    client = LLMClient(api_key="sk-test", model="gpt-4o-mini")
+    with pytest.raises(LLMRefusalError):
+        client.ask([{"role": "user", "content": "anything"}])
+
+
+def test_ask_prefers_parsed_when_both_parsed_and_refusal_present(mock_openai):
+    """parsed 跟 refusal 同時有值 -> 以 parsed 為準、不 raise（contract test）。"""
+    parsed = LLMResponse(answer="ok", sources=[])
+    fake_message = MagicMock(parsed=parsed, refusal="some refusal text")
+    mock_openai.chat.completions.parse.return_value = MagicMock(
+        choices=[MagicMock(message=fake_message)]
+    )
+
+    client = LLMClient(api_key="sk-test", model="gpt-4o-mini")
+    result = client.ask([{"role": "user", "content": "anything"}])
+    assert result.answer == "ok"
