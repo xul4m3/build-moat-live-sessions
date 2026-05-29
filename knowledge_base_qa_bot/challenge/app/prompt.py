@@ -7,8 +7,8 @@ Prompt 組裝：把 retrieved sections + user query 變成 OpenAI 的 messages l
         {"role": "user",   "content": "<context + question>"},
     ]
 """
-from app.types import Section
 
+from app.types import Section
 
 _SYSTEM_PROMPT = (
     "You are a customer support assistant answering strictly from the provided "
@@ -38,10 +38,7 @@ def build_messages(query: str, sections: list[Section]) -> list[dict]:
     # 把每個 section 排成 "[citation]\nbody" 的 block、用空行分隔
     # f-string 是 Python 3.6+ 內建的字串格式化工具，可以在字串裡嵌入變數：
     #   f"[{s.citation}]\n{s.body}" 等同於 "[" + s.citation + "]\n" + s.body
-    context_blocks = [
-        f"[{s.citation}]\n{s.body}"
-        for s in sections
-    ]
+    context_blocks = [f"[{s.citation}]\n{s.body}" for s in sections]
     # join(list) 是把 list 裡的字串用指定分隔符合併成一個大字串：
     #   "\n\n".join(["a", "b"]) → "a\n\nb"
     context = "\n\n".join(context_blocks)

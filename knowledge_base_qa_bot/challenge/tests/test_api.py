@@ -11,11 +11,15 @@ monkeypatch 是 pytest 內建 fixture：
 - 可以暫時改 env var（setenv/delenv）、替換函式（setattr）
 - test 結束後自動復原，不會汙染其他 test
 """
+
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+
+# LLMResponse：test 用它組 mock_ask.return_value，模擬 LLM 結構化輸出的回傳型別
+from app.llm import LLMResponse
 
 
 @pytest.fixture
@@ -34,8 +38,9 @@ def app_factory(monkeypatch, sample_docs_dir, tmp_path):
     """
     created_clients: list[TestClient] = []
 
-    def _build(initial_index: bool = False, docs_dir: Path | None = None,
-               pre_seed_index: str | None = None):
+    def _build(
+        initial_index: bool = False, docs_dir: Path | None = None, pre_seed_index: str | None = None
+    ):
         # 1. 設好 env var，讓 load_config() 拿到測試用的值
         # BM25_SCORE_THRESHOLD 刻意不在這裡設，讓 test 在呼 _build() 前自己設定：
         # - 要驗 grounded path 的 test：先 setenv("BM25_SCORE_THRESHOLD", "-1.0")
@@ -53,7 +58,8 @@ def app_factory(monkeypatch, sample_docs_dir, tmp_path):
         index_path = tmp_path / ".kb" / "index.json"
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         monkeypatch.setenv("OPENAI_MODEL", "gpt-4o-mini")
-        monkeypatch.setenv("KB_DOCS_DIR", str(docs_dir if docs_dir is not None else sample_docs_dir))
+        chosen_docs = docs_dir if docs_dir is not None else sample_docs_dir
+        monkeypatch.setenv("KB_DOCS_DIR", str(chosen_docs))
         monkeypatch.setenv("KB_INDEX_PATH", str(index_path))
 
         # 2. mock 掉 LLMClient.ask；要在 import main 之前 patch
@@ -70,7 +76,9 @@ def app_factory(monkeypatch, sample_docs_dir, tmp_path):
         # 從快取（sys.modules）拿已有的 module，load_config() 不會重跑。
         # reload() 強制重新執行整個 module，讓 env 改動生效。
         from importlib import reload
+
         from app import main
+
         reload(main)  # 確保拿到最新 env 變數
 
         # 3b. 若 test 要求，在 lifespan 觸發前預先寫入 index 檔
@@ -118,17 +126,12 @@ def test_index_endpoint_builds_and_persists(app_factory, tmp_path):
     assert r.status_code == 200
 
     body = r.json()
-    assert body["files_indexed"] == 2          # conftest 寫 2 個檔
-    assert body["sections_indexed"] == 2       # 各 1 個 ## section
+    assert body["files_indexed"] == 2  # conftest 寫 2 個檔
+    assert body["sections_indexed"] == 2  # 各 1 個 ## section
 
     # index 檔被寫出來（用 tmp_path 確認路徑跟 app_factory 設的 KB_INDEX_PATH 一致）
     index_path = tmp_path / ".kb" / "index.json"
     assert index_path.exists()
-
-
-# LLMResponse 在此 import，test 可以 mock_ask.return_value = LLMResponse(...)
-# 這樣不需要知道 main.py 內部用的是 dict 還是 pydantic，只要遵守 LLMResponse schema 就好
-from app.llm import LLMResponse
 
 
 def test_chat_before_index_returns_friendly_message(app_factory):
@@ -143,8 +146,7 @@ def test_chat_before_index_returns_friendly_message(app_factory):
     assert r.status_code == 200
     body = r.json()
     # 訊息裡要說 "not been indexed" 或 "not indexed"（大小寫不限）
-    assert "not been indexed" in body["answer"].lower() \
-        or "not indexed" in body["answer"].lower()
+    assert "not been indexed" in body["answer"].lower() or "not indexed" in body["answer"].lower()
     assert body["sources"] == []
     # LLM 不該被呼叫，因為根本沒有 index 可以檢索
     mock_ask.assert_not_called()

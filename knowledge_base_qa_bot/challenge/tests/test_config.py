@@ -1,9 +1,10 @@
 """驗證 config 從 env var 讀取、提供預設值、缺必要欄位時 raise。"""
+
 from pathlib import Path
 
 import pytest
 
-from app.config import Config, load_config
+from app.config import load_config
 
 
 def test_load_config_uses_env_values(monkeypatch):
@@ -31,8 +32,14 @@ def test_load_config_uses_defaults(monkeypatch):
     """除了 OPENAI_API_KEY 必填，其他都該有合理預設值。"""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     # 確保其他 env 是空的
-    for k in ("OPENAI_MODEL", "BM25_SCORE_THRESHOLD", "KB_DOCS_DIR",
-              "KB_INDEX_PATH", "LOG_LEVEL", "ENV_NAME"):
+    for k in (
+        "OPENAI_MODEL",
+        "BM25_SCORE_THRESHOLD",
+        "KB_DOCS_DIR",
+        "KB_INDEX_PATH",
+        "LOG_LEVEL",
+        "ENV_NAME",
+    ):
         monkeypatch.delenv(k, raising=False)
 
     cfg = load_config()

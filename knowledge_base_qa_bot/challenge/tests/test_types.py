@@ -1,5 +1,6 @@
 """驗證 Section / RetrievalResult dataclass 的基本欄位 + citation property。"""
-from app.types import Section, RetrievalResult
+
+from app.types import RetrievalResult, Section
 
 
 def test_section_stores_fields():

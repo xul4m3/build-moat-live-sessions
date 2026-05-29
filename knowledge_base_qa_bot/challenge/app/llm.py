@@ -6,6 +6,7 @@ OpenAI 結構化輸出 client。
 
 API 版本：openai>=1.40（chat.completions.parse() 已從 beta graduate；不要用 .beta.）。
 """
+
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -19,6 +20,7 @@ class LLMResponse(BaseModel):
       1. 告訴 OpenAI SDK 「我要 JSON Schema 對應這個結構」
       2. 接住 LLM 回傳並 deserialize 成 Python 物件
     """
+
     answer: str
     sources: list[str]
 
@@ -63,7 +65,10 @@ class LLMClient:
         """
         completion = self._client.chat.completions.parse(
             model=self._model,
-            messages=messages,
+            # messages 是 prompt.build_messages 產的 plain dict。OpenAI 的
+            # ChatCompletionMessageParam 是很嚴的 TypedDict union，runtime 接受
+            # dict 沒問題，只是 mypy 對 TypedDict 嚴格 -> 局部 ignore 這個 arg-type。
+            messages=messages,  # type: ignore[arg-type]
             response_format=LLMResponse,
         )
         # 防禦：少數錯誤情況下 OpenAI 可能回空 choices；不擋下會 IndexError

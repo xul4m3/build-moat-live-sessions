@@ -1,6 +1,8 @@
 """驗證 markdown loader：slugify、parse_markdown、load_docs。"""
+
 from pathlib import Path
-from app.loader import slugify, parse_markdown, load_docs
+
+from app.loader import load_docs, parse_markdown, slugify
 
 
 def test_slugify_lowercases_and_dasherizes():
@@ -75,11 +77,7 @@ def test_parse_markdown_empty_content_returns_one_section_with_empty_body():
 
 def test_parse_markdown_h3_treated_as_body_not_section_boundary():
     """### H3 不應該被當成 section 邊界 -> 整段含 ### 都會進 H2 section 的 body。"""
-    content = (
-        "## Section\n"
-        "### Sub\n"
-        "some text\n"
-    )
+    content = "## Section\n### Sub\nsome text\n"
     sections = parse_markdown(content, "x.md")
     assert len(sections) == 1
     assert sections[0].heading == "Section"
@@ -90,11 +88,7 @@ def test_parse_markdown_h3_treated_as_body_not_section_boundary():
 
 def test_parse_markdown_heading_with_no_body_produces_empty_body():
     """連續 ## 中間沒文字 -> 前一個 section body 是空字串。"""
-    content = (
-        "## First\n"
-        "## Second\n"
-        "some text\n"
-    )
+    content = "## First\n## Second\nsome text\n"
     sections = parse_markdown(content, "x.md")
     assert len(sections) == 2
     assert sections[0].heading == "First"
@@ -134,9 +128,7 @@ def test_load_docs_handles_utf8_bom(tmp_path: Path):
     docs = tmp_path / "docs"
     docs.mkdir()
     # write_text encoding="utf-8-sig" 會在檔案開頭寫入 BOM
-    (docs / "bom.md").write_text(
-        "## Refund Timeline\nRefunds in 5-7 days.\n", encoding="utf-8-sig"
-    )
+    (docs / "bom.md").write_text("## Refund Timeline\nRefunds in 5-7 days.\n", encoding="utf-8-sig")
     sections = load_docs(docs)
     assert len(sections) == 1
     # 重點：heading 是 "Refund Timeline"，不是退化成 filename "bom"

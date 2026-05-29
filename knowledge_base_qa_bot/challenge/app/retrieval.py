@@ -5,6 +5,7 @@ threshold 邏輯（DESIGN.md §6.1）：
 - 如果 top-1 score < threshold → 視為「沒有相關內容」、回 fallback=True
 - fallback=True 時 呼叫端應該直接回 cannot-confirm、不要再呼 LLM
 """
+
 from app.bm25 import BM25Index
 from app.types import RetrievalResult
 
@@ -40,7 +41,8 @@ def search(
     # zip(*iterable) 是 unzip 慣用法：把 [(s1, sc1), (s2, sc2), ...] 轉成
     # ([s1, s2, ...], [sc1, sc2, ...])。比兩次 list comprehension 更慣用、只走訪一次。
     # 注意：zip 回 tuple，所以下面要 list(...) 把它轉成 list。
-    sections_tuple, scores_tuple = zip(*ranked)
+    # strict=True：ranked 裡每個元素都是 (section, score) 2-tuple，解開必等長
+    sections_tuple, scores_tuple = zip(*ranked, strict=True)
     return RetrievalResult(
         sections=list(sections_tuple),
         scores=list(scores_tuple),

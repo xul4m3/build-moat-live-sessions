@@ -10,9 +10,11 @@ Heading 規則（per DESIGN.md §6.2）：
 ⚠️ Slug 限制：slugify 只支援 ASCII 英數字元。中文等非英文 heading 會產生空字串
    slug，會把 citation 弄成 "filename#"。目前 KB 只有英文 docs、可接受。
 """
+
 import logging
 import re
 from pathlib import Path
+
 from app.types import Section
 
 logger = logging.getLogger(__name__)
@@ -33,9 +35,9 @@ def slugify(text: str) -> str:
     4. str.strip("-") 去掉開頭結尾多餘的 "-"
     """
     s = text.lower()
-    s = re.sub(r"[^a-z0-9]+", "-", s)   # 非英數換成 "-"
-    s = re.sub(r"-+", "-", s)            # 合併連續 "-"
-    return s.strip("-")                  # 去掉首尾 "-"
+    s = re.sub(r"[^a-z0-9]+", "-", s)  # 非英數換成 "-"
+    s = re.sub(r"-+", "-", s)  # 合併連續 "-"
+    return s.strip("-")  # 去掉首尾 "-"
 
 
 def parse_markdown(content: str, filename: str) -> list[Section]:
@@ -61,8 +63,8 @@ def parse_markdown(content: str, filename: str) -> list[Section]:
           在外層 for 迴圈裡，所以不需要 nonlocal
     """
     sections: list[Section] = []
-    current_heading: str | None = None   # None 表示還沒遇到第一個 ## 行
-    current_body_lines: list[str] = []   # 累積目前 section 的 body 各行
+    current_heading: str | None = None  # None 表示還沒遇到第一個 ## 行
+    current_body_lines: list[str] = []  # 累積目前 section 的 body 各行
 
     def flush() -> None:
         """把累積的 body lines 收成一個 Section、加進 sections。
@@ -73,20 +75,22 @@ def parse_markdown(content: str, filename: str) -> list[Section]:
         if current_heading is not None:
             heading_text = current_heading
             # "\n".join(list) 把 list 的元素用換行符接起來，還原成多行字串
-            sections.append(Section(
-                filename=filename,
-                heading=heading_text,
-                heading_slug=slugify(heading_text),
-                body="\n".join(current_body_lines).strip(),  # strip() 去掉多餘空白行
-            ))
+            sections.append(
+                Section(
+                    filename=filename,
+                    heading=heading_text,
+                    heading_slug=slugify(heading_text),
+                    body="\n".join(current_body_lines).strip(),  # strip() 去掉多餘空白行
+                )
+            )
 
     # content.splitlines() 把多行字串切成逐行 list，不帶換行符
     for line in content.splitlines():
-        if line.startswith("## "):   # 只認 H2；"### "、"# "、"##nospace" 都會走到 elif 變 body
+        if line.startswith("## "):  # 只認 H2；"### "、"# "、"##nospace" 都會走到 elif 變 body
             # 遇到新 section -> 先把上一個 flush 掉，再重設 heading + body
             flush()
-            current_heading = line[3:].strip()   # line[3:] 去掉 "## " 前綴（3 個字元）
-            current_body_lines = []              # 重置 body 收集器
+            current_heading = line[3:].strip()  # line[3:] 去掉 "## " 前綴（3 個字元）
+            current_body_lines = []  # 重置 body 收集器
         elif current_heading is not None:
             # 在某個 ## section 內的普通行 -> 累進 body
             current_body_lines.append(line)
@@ -98,12 +102,14 @@ def parse_markdown(content: str, filename: str) -> list[Section]:
     if not sections:
         # str.removesuffix() 是 Python 3.9+ 的字串方法，去掉特定後綴
         fallback_heading = filename.removesuffix(".md")
-        sections.append(Section(
-            filename=filename,
-            heading=fallback_heading,
-            heading_slug=slugify(fallback_heading),
-            body=content.strip(),   # 整個 content 當 body；空字串 strip 還是空字串
-        ))
+        sections.append(
+            Section(
+                filename=filename,
+                heading=fallback_heading,
+                heading_slug=slugify(fallback_heading),
+                body=content.strip(),  # 整個 content 當 body；空字串 strip 還是空字串
+            )
+        )
 
     return sections
 

@@ -1,5 +1,6 @@
 """驗證 tokenize + BM25Index。"""
-from app.bm25 import tokenize, BM25Index
+
+from app.bm25 import BM25Index, tokenize
 from app.types import Section
 
 
@@ -34,12 +35,24 @@ def _make_sections() -> list[Section]:
     test 直接呼叫即可。
     """
     return [
-        Section("refund.md", "Refund Timeline", "refund-timeline",
-                "Approved refunds are processed within 5-7 business days."),
-        Section("account.md", "Reset Password", "reset-password",
-                "Customers can reset password from the sign-in page."),
-        Section("shipping.md", "Standard Shipping", "standard-shipping",
-                "Standard shipping takes 3-5 business days."),
+        Section(
+            "refund.md",
+            "Refund Timeline",
+            "refund-timeline",
+            "Approved refunds are processed within 5-7 business days.",
+        ),
+        Section(
+            "account.md",
+            "Reset Password",
+            "reset-password",
+            "Customers can reset password from the sign-in page.",
+        ),
+        Section(
+            "shipping.md",
+            "Standard Shipping",
+            "standard-shipping",
+            "Standard shipping takes 3-5 business days.",
+        ),
     ]
 
 

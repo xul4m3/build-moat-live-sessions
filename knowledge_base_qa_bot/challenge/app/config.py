@@ -6,6 +6,7 @@
 - K8s 部署時 .env 不存在、load_dotenv() 靜默 no-op；env vars 由 K8s 注入
 - App 一律從 os.environ 讀，不關心來源
 """
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,9 +18,11 @@ from dotenv import load_dotenv
 class Config:
     """所有 runtime 設定值。frozen=True 表示建構後不可改、避免被誤動。
 
-    frozen=True 的 dataclass 等同於 readonly：嘗試 cfg.openai_model = "x" 會 raise FrozenInstanceError。
+    frozen=True 的 dataclass 等同於 readonly：
+    嘗試 cfg.openai_model = "x" 會 raise FrozenInstanceError。
     這對 config 物件特別有用 —— 設定一次、整個 process 不該被偷偷改。
     """
+
     openai_api_key: str
     openai_model: str
     bm25_score_threshold: float
@@ -44,8 +47,7 @@ def load_config() -> Config:
     api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not api_key:
         raise RuntimeError(
-            "OPENAI_API_KEY is required. Set it in .env (local) or "
-            "via K8s Secret (production)."
+            "OPENAI_API_KEY is required. Set it in .env (local) or via K8s Secret (production)."
         )
 
     return Config(
@@ -71,6 +73,4 @@ def _parse_float_env(name: str, default: str) -> float:
     try:
         return float(raw)
     except ValueError as e:
-        raise ValueError(
-            f"{name} must be a float; got: {raw!r}"
-        ) from e
+        raise ValueError(f"{name} must be a float; got: {raw!r}") from e

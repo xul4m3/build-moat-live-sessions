@@ -1,4 +1,5 @@
 """驗證 LLMClient：透過 monkeypatch mock OpenAI client，不打真實 API。"""
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -33,9 +34,8 @@ def test_ask_returns_parsed_response(mock_openai):
 
 def test_ask_passes_messages_and_model_to_openai(mock_openai):
     """messages 跟 model 要原封不動傳給 OpenAI。"""
-    fake_completion = MagicMock(
-        choices=[MagicMock(message=MagicMock(parsed=LLMResponse(answer="x", sources=[]), refusal=None))]
-    )
+    fake_message = MagicMock(parsed=LLMResponse(answer="x", sources=[]), refusal=None)
+    fake_completion = MagicMock(choices=[MagicMock(message=fake_message)])
     mock_openai.chat.completions.parse.return_value = fake_completion
 
     client = LLMClient(api_key="sk-test", model="gpt-4o")

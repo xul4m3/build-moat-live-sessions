@@ -3,6 +3,7 @@
 build_index 是 Docker build 階段跑的 CLI（bake index 進 image）。
 壞了會讓 docker build 直接失敗、沒有 runtime fallback，所以值得有 test 守住。
 """
+
 from pathlib import Path
 
 import pytest

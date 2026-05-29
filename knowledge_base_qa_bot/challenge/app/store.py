@@ -5,6 +5,7 @@ BM25Index 的序列化 / 反序列化：寫 .kb/index.json 跟讀回來。
 - index.json 要能 `cat`、人讀得懂（Karpathy 風格核心，DESIGN.md §10 提到）
 - 損壞或缺檔不要 crash，回 None 讓呼叫端處理
 """
+
 import json
 from pathlib import Path
 
@@ -25,8 +26,9 @@ def save(index: BM25Index, path: Path) -> None:
         }
     """
     # dict comprehension：[{...} for s in index.sections]
-    # 把每個 Section dataclass 的欄位手動轉成 dict（JSON 只認識 dict / list / str / int / float / bool / None，
-    # 不認識自訂 class，所以要自己攤平）
+    # 把每個 Section dataclass 的欄位手動轉成 dict
+    # （JSON 只認識 dict / list / str / int / float / bool / None，
+    #  不認識自訂 class，所以要自己攤平）
     data = {
         "sections": [
             {

@@ -1,10 +1,9 @@
 """驗證 index 序列化：save → load 拿回等價物件。"""
+
 from pathlib import Path
 
-import pytest
-
 from app.bm25 import BM25Index
-from app.store import save, load
+from app.store import load, save
 from app.types import Section
 
 
@@ -82,6 +81,6 @@ def test_saved_json_is_human_readable(tmp_path: Path):
     save(idx, path)
 
     raw = path.read_text(encoding="utf-8")
-    assert "alpha" in raw                   # 看得到 section heading slug
+    assert "alpha" in raw  # 看得到 section heading slug
     assert "the alpha section body" in raw  # 看得到原文
-    assert "\n" in raw                      # 有 indent、不是一坨
+    assert "\n" in raw  # 有 indent、不是一坨

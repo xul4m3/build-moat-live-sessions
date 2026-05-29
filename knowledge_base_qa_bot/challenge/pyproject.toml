@@ -1,0 +1,17 @@
+# 工具設定集中地（ruff lint/format + mypy type check）。
+# 依賴本身仍由 requirements.txt / requirements-dev.txt 管理，不在這裡列。
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: import 排序, B: bugbear（抓常見 bug）, UP: pyupgrade
+select = ["E", "W", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.13"
+# 只對 app/ 做 type check；tests/ 大量用 MagicMock，硬要 type 乾淨成本高、價值低
+files = ["app"]
+# 第三方套件沒帶 type stub（rank_bm25 等）時不報錯 —— 不是我們的 code
+ignore_missing_imports = true

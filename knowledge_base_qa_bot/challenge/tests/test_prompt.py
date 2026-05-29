@@ -1,14 +1,23 @@
 """驗證 prompt 組裝：system instruction + context + query。"""
+
 from app.prompt import build_messages
 from app.types import Section
 
 
 def _sections() -> list[Section]:
     return [
-        Section("refund.md", "Refund Timeline", "refund-timeline",
-                "Approved refunds are processed within 5-7 business days."),
-        Section("shipping.md", "Standard Shipping", "standard-shipping",
-                "Standard shipping takes 3-5 business days."),
+        Section(
+            "refund.md",
+            "Refund Timeline",
+            "refund-timeline",
+            "Approved refunds are processed within 5-7 business days.",
+        ),
+        Section(
+            "shipping.md",
+            "Standard Shipping",
+            "standard-shipping",
+            "Standard shipping takes 3-5 business days.",
+        ),
     ]
 
 

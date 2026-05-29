@@ -1,18 +1,33 @@
 """驗證 retrieval.search：top-k 排序 + threshold fallback。"""
+
 from app.bm25 import BM25Index
 from app.retrieval import search
 from app.types import Section
 
 
 def _index() -> BM25Index:
-    return BM25Index.build([
-        Section("refund.md", "Refund Timeline", "refund-timeline",
-                "Approved refunds are processed within 5-7 business days."),
-        Section("account.md", "Reset Password", "reset-password",
-                "Customers can reset password from the sign-in page."),
-        Section("shipping.md", "Standard Shipping", "standard-shipping",
-                "Standard shipping takes 3-5 business days."),
-    ])
+    return BM25Index.build(
+        [
+            Section(
+                "refund.md",
+                "Refund Timeline",
+                "refund-timeline",
+                "Approved refunds are processed within 5-7 business days.",
+            ),
+            Section(
+                "account.md",
+                "Reset Password",
+                "reset-password",
+                "Customers can reset password from the sign-in page.",
+            ),
+            Section(
+                "shipping.md",
+                "Standard Shipping",
+                "standard-shipping",
+                "Standard shipping takes 3-5 business days.",
+            ),
+        ]
+    )
 
 
 def test_search_threshold_equal_to_top_score_does_not_fallback():

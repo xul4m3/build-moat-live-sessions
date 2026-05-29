@@ -5,21 +5,61 @@ BM25 inverted index 封裝。
 - tokenize(text) → list[str]：lowercase + 拆字 + 去 stopwords
 - BM25Index：封裝 rank_bm25.BM25Okapi，保留 Section 對應、提供 top_k 介面
 """
+
 import re
 from dataclasses import dataclass, field
-from rank_bm25 import BM25Okapi
-from app.types import Section
 
+from rank_bm25 import BM25Okapi
+
+from app.types import Section
 
 # 常見英文 stopword 集合（set literal：大括號 {} 包字串，O(1) 查詢）。
 # BM25 對 stopword 不敏感（它本來就會用 IDF 壓低高頻詞），
 # 不過去掉能讓 tokens 更精簡、index.json 更小、log 更乾淨。
 STOPWORDS: set[str] = {
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-    "has", "have", "he", "i", "in", "is", "it", "its", "of", "on",
-    "that", "the", "to", "was", "were", "will", "with", "you", "your",
-    "can", "this", "these", "they", "them", "their", "or", "but", "if",
-    "do", "does", "did", "not", "no",
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "has",
+    "have",
+    "he",
+    "i",
+    "in",
+    "is",
+    "it",
+    "its",
+    "of",
+    "on",
+    "that",
+    "the",
+    "to",
+    "was",
+    "were",
+    "will",
+    "with",
+    "you",
+    "your",
+    "can",
+    "this",
+    "these",
+    "they",
+    "them",
+    "their",
+    "or",
+    "but",
+    "if",
+    "do",
+    "does",
+    "did",
+    "not",
+    "no",
 }
 
 
@@ -48,6 +88,7 @@ class BM25Index:
     建議用 BM25Index.build(sections) 建立，這個 classmethod 會幫你 tokenize。
     直接呼 __init__ 通常是 store.load() 反序列化時用的（tokens 已經算過了）。
     """
+
     sections: list[Section]
     tokens: list[list[str]]
     # field() 是 dataclass 的進階設定工具：
@@ -101,8 +142,10 @@ class BM25Index:
         # zip(a, b)：把兩個序列對位配對成 (a[i], b[i]) 的 iterator
         # sorted(..., key=lambda pair: pair[1], reverse=True)：
         #   lambda 是匿名函式，pair[1] 取第二個元素（score）作為排序鍵，reverse=True 降冪
+        # strict=True：要求 sections 跟 scores 等長（get_scores 對每個 section 回一個分數，
+        # 本來就該等長）；若哪天不等長，zip 會 raise 而不是默默丟掉尾巴。
         ranked = sorted(
-            zip(self.sections, scores),
+            zip(self.sections, scores, strict=True),
             key=lambda pair: pair[1],
             reverse=True,
         )
