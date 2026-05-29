@@ -1,19 +1,20 @@
 # Done Checklist — KB Q&A Bot Challenge Track
 
-Status as of 2026-05-28 on branch `feat/kb-qa-bot`.
+Status as of 2026-05-29 on branch `feat/kb-qa-bot`.
 
 ## Definition of Done (per DESIGN.md §12)
 
-- [x] `pytest tests/ -v` 全綠 — 55 tests pass
+- [x] `pytest tests/ -v` 全綠 — 72 tests pass（含 2026-05-29 edge-case hardening，見下方）
   - types (3)
-  - loader (11)
+  - loader (13)
   - bm25 (9)
   - store (7)
-  - retrieval (4)
+  - retrieval (7)
   - prompt (6)
-  - llm (4)
-  - config (4)
-  - api (7)
+  - llm (6)
+  - config (6)
+  - build_index (4)
+  - api (11)
 
 - [x] `.kb/index.json` 可以 `cat`、人能讀 — store.save 用 indent=2, ensure_ascii=False，JSON 結構簡單可掃描
 
@@ -25,7 +26,7 @@ Status as of 2026-05-28 on branch `feat/kb-qa-bot`.
 
 - [x] Dockerfile build 成功、image 起來能 serve `/health` — Task 10 已驗：docker build -t kb-qa-bot:dev . 成功、docker run 起來回應 /health 200
 
-- [ ] PROMPT.md L60-105 的 7 個 curl test 全部通過 — **needs manual run with real OPENAI_API_KEY** via `bash scripts/smoke.sh`
+- [x] PROMPT.md L60-105 的 7 個 curl test 全部通過 — 2026-05-28 用真實 OPENAI_API_KEY 跑過 `scripts/smoke.sh`，7/7 通過（/health、未 index 友善訊息、/index 回 3 files 9 sections、index.json 可讀、refunds 命中 refund_policy.md#refund-timeline、email 命中 account_help.md#change-email-address、restaurants 走 cannot-confirm 不呼 LLM）。預設 threshold 0.5 即可、無需調整。下方步驟保留供重現。
 
 ## Outstanding for user
 
@@ -96,19 +97,37 @@ The default 0.5 was tuned against the sample corpus; your threshold may differ.
 
 ```
 $ pytest tests/ -v
-============================= 55 passed in ~3.35s =============================
+============================= 72 passed in ~4.9s =============================
 ```
 
 Breakdown:
-- test_api.py: 7 (including integration tests)
+- test_api.py: 11 (integration + LLM-refusal 503, empty/missing docs dir, corrupt-index startup)
 - test_bm25.py: 9 (including edge cases like stopword-only queries)
-- test_config.py: 4 (env parsing, defaults, validation)
-- test_llm.py: 4 (OpenAI mock, structured output)
-- test_loader.py: 11 (slugify, parse, edge cases)
+- test_build_index.py: 4 (CLI success, empty corpus, missing arg, nonexistent dir)
+- test_config.py: 6 (env parsing, defaults, validation, empty/whitespace key)
+- test_llm.py: 6 (OpenAI mock, structured output, refusal, None message, both-set priority)
+- test_loader.py: 13 (slugify, parse, H3/empty-body contracts, UTF-8 BOM, non-UTF-8 skip)
 - test_prompt.py: 6 (citation tags, grounding, order)
-- test_retrieval.py: 4 (threshold, fallback, empty index)
+- test_retrieval.py: 7 (threshold, fallback, empty index, boundary `<` semantics, zero-threshold gotcha)
 - test_store.py: 7 (round-trip, corruption, format)
 - test_types.py: 3 (Section, RetrievalResult, citations)
+
+## Edge-case Hardening (2026-05-29)
+
+對抗性 edge-case 覆蓋審查後補強。無現有功能 bug；以下為審查暴露的 robustness 缺口（已修 code + 補 test）與防 regression 的 characterization test。
+
+**Robustness fixes (code + test):**
+- `config.py` — 純空白 `OPENAI_API_KEY`（`"   "`）原本繞過 fail-fast；改 `.strip()` 後檢查。
+- `llm.py` — `choices[0].message` 為 `None` 原本拋 `AttributeError`；改 raise `LLMRefusalError`。同時鎖定 parsed 與 refusal 同時存在時以 parsed 為準。
+- `loader.py` — UTF-8 BOM 檔（Windows 編輯器常見）害 `## ` 比對失敗、整檔退化成 fallback；改用 `utf-8-sig` 讀取。
+- `loader.py` — 單一非 UTF-8 `.md` 原本拋 `UnicodeDecodeError` 中斷整個 `/index`；改 try/except 跳過壞檔 + warn log。
+
+**防 regression / characterization tests:**
+- `build_index.py` — 原本 0 test（Docker build bake step）；補 success / empty corpus / missing arg / nonexistent dir。
+- `main.py` — `LLMRefusalError → 503`（原本只測 `openai.OpenAIError`）、`/index` 空目錄與不存在目錄回 0 counts、啟動載入損壞 index.json 的 recovery path。
+- `retrieval.py` — threshold 嚴格 `<` 邊界語義；threshold=0 與零分結果不 fallback 的 gotcha（解釋為何預設 0.5）。
+
+**刻意不測（避免 over-testing）：** unicode passthrough、負數 k、Section aliasing 等低風險 / 文件化既有正確行為的 case。
 
 ## Code Quality Checklist
 
