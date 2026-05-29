@@ -1,6 +1,7 @@
 # === Stage 1: builder ===
 # 用 slim 版減少 image 體積；builder 只在 build 階段跑、最後不會留在 runtime
-FROM python:3.12-slim AS builder
+# 版本對齊 .python-version（3.13）—— 避免本機 / CI / Docker 跑不同 Python 版本
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -20,7 +21,7 @@ RUN python -m app.build_index \
     --output .kb/index.json
 
 # === Stage 2: runtime ===
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
