@@ -58,3 +58,20 @@ def test_load_config_missing_api_key_raises(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
         load_config()
+
+
+def test_load_config_empty_api_key_raises(monkeypatch):
+    """OPENAI_API_KEY 設成空字串 -> 也要 raise（不能被當成有值）。"""
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+        load_config()
+
+
+def test_load_config_whitespace_api_key_raises(monkeypatch):
+    """OPENAI_API_KEY 只有空白字元 -> 要 raise。
+
+    否則 server 起得來、但第一次打 OpenAI API 才掛 —— fail-fast 失效。
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "   ")
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+        load_config()

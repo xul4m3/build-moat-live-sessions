@@ -39,7 +39,9 @@ def load_config() -> Config:
     # 沒有 .env 檔不會 raise，只是 no-op。
     load_dotenv()
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    # .strip() 把純空白的 key（例如 "   "）也當成沒設 —— 否則 fail-fast 會被繞過：
+    # server 起得來、但第一次打 OpenAI 才因為 invalid key 掛掉。
+    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not api_key:
         raise RuntimeError(
             "OPENAI_API_KEY is required. Set it in .env (local) or "
