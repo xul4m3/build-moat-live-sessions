@@ -34,7 +34,8 @@ def app_factory(monkeypatch, sample_docs_dir, tmp_path):
     """
     created_clients: list[TestClient] = []
 
-    def _build(initial_index: bool = False):
+    def _build(initial_index: bool = False, docs_dir: Path | None = None,
+               pre_seed_index: str | None = None):
         # 1. 設好 env var，讓 load_config() 拿到測試用的值
         # BM25_SCORE_THRESHOLD 刻意不在這裡設，讓 test 在呼 _build() 前自己設定：
         # - 要驗 grounded path 的 test：先 setenv("BM25_SCORE_THRESHOLD", "-1.0")
@@ -45,10 +46,15 @@ def app_factory(monkeypatch, sample_docs_dir, tmp_path):
         # 所有 term 的 IDF = 0，所以 get_scores() 一律回 0.0。
         # grounded path 的 test 用 threshold=-1.0 繞過這個邊際情形；
         # 生產環境的 docs/ 語料夠大，score 不會是 0，用預設 0.5 即可。
+        #
+        # docs_dir：預設用 conftest 的 sample_docs_dir；test 可覆寫成空目錄 / 不存在目錄。
+        # pre_seed_index：若給字串，在建 client（觸發 lifespan）前先寫進 KB_INDEX_PATH，
+        #                 用來模擬「啟動時已有既有 / 壞掉的 index.json」。
+        index_path = tmp_path / ".kb" / "index.json"
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         monkeypatch.setenv("OPENAI_MODEL", "gpt-4o-mini")
-        monkeypatch.setenv("KB_DOCS_DIR", str(sample_docs_dir))
-        monkeypatch.setenv("KB_INDEX_PATH", str(tmp_path / ".kb" / "index.json"))
+        monkeypatch.setenv("KB_DOCS_DIR", str(docs_dir if docs_dir is not None else sample_docs_dir))
+        monkeypatch.setenv("KB_INDEX_PATH", str(index_path))
 
         # 2. mock 掉 LLMClient.ask；要在 import main 之前 patch
         # monkeypatch.setattr("app.llm.LLMClient.ask", mock_ask) 的意思：
@@ -66,6 +72,12 @@ def app_factory(monkeypatch, sample_docs_dir, tmp_path):
         from importlib import reload
         from app import main
         reload(main)  # 確保拿到最新 env 變數
+
+        # 3b. 若 test 要求，在 lifespan 觸發前預先寫入 index 檔
+        # （reload 不會碰檔案、lifespan 在下面的 __enter__() 才讀，所以時機剛好）
+        if pre_seed_index is not None:
+            index_path.parent.mkdir(parents=True, exist_ok=True)
+            index_path.write_text(pre_seed_index, encoding="utf-8")
 
         # 4. 建立 TestClient 並觸發 lifespan（startup hook）
         # FastAPI 的 TestClient 只有在 context manager 模式下（with TestClient(app)）
@@ -237,3 +249,53 @@ def test_chat_llm_failure_returns_503(app_factory, monkeypatch):
     body = r.json()
     # FastAPI HTTPException 的 detail 會出現在 response body
     assert "unavailable" in body["detail"].lower()
+
+
+def test_chat_llm_refusal_returns_503(app_factory, monkeypatch):
+    """LLMRefusalError（app 自訂例外，跟 openai.OpenAIError 不同類）-> 也要回 503。
+
+    main.py 的 except tuple 同時抓 (openai.OpenAIError, LLMRefusalError)，
+    但之前只測過 openai 那條。這個 test 守住 refusal 分支不會退化成 500。
+    """
+    from app.llm import LLMRefusalError
+
+    monkeypatch.setenv("BM25_SCORE_THRESHOLD", "-1.0")
+    client, mock_ask = app_factory(initial_index=True)
+    mock_ask.side_effect = LLMRefusalError("model refused")
+
+    r = client.post("/chat", json={"query": "How long do refunds take?"})
+    assert r.status_code == 503
+    assert "unavailable" in r.json()["detail"].lower()
+
+
+def test_index_empty_docs_dir_returns_zero_counts(app_factory, tmp_path):
+    """/index 對空目錄 -> 200 + files/sections = 0（BM25Index.build([]) 不該 crash）。"""
+    empty = tmp_path / "empty_docs"
+    empty.mkdir()
+    client, _ = app_factory(docs_dir=empty)
+
+    r = client.post("/index")
+    assert r.status_code == 200
+    assert r.json() == {"files_indexed": 0, "sections_indexed": 0}
+
+
+def test_index_nonexistent_docs_dir_returns_zero_counts(app_factory, tmp_path):
+    """/index 對不存在的目錄 -> load_docs 回 []，200 + count 0（靜默、不報錯）。"""
+    missing = tmp_path / "nope"  # 不 mkdir
+    client, _ = app_factory(docs_dir=missing)
+
+    r = client.post("/index")
+    assert r.status_code == 200
+    assert r.json()["files_indexed"] == 0
+
+
+def test_startup_with_corrupt_index_falls_back_to_not_indexed(app_factory):
+    """啟動時 index.json 是壞掉的 JSON -> store.load 回 None、不 crash、
+    /chat 回「尚未 index」訊息（recovery path）。"""
+    client, mock_ask = app_factory(pre_seed_index="{ this is not valid json")
+
+    r = client.post("/chat", json={"query": "anything"})
+    assert r.status_code == 200
+    answer = r.json()["answer"].lower()
+    assert "not been indexed" in answer or "not indexed" in answer
+    mock_ask.assert_not_called()
